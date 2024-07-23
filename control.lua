@@ -1,15 +1,20 @@
 prometheus = require("prometheus/prometheus")
+local logging = require("logging")
 require("train")
 require("yarm")
 require("events")
 require("power")
 require("research")
+require("signals")
+require("signals-ui")
+require("signals-debug-ui")
 
 bucket_settings = train_buckets(settings.startup["graftorio2-train-histogram-buckets"].value)
 nth_tick = settings.startup["graftorio2-nth-tick"].value
 server_save = settings.startup["graftorio2-server-save"].value
 disable_train_stats = settings.startup["graftorio2-disable-train-stats"].value
 disable_per_player_stats = settings.startup["graftorio2-disable-per-player-stats"].value
+enable_signal_groups = settings.startup["graftorio2-enable-signal-groups"].value
 
 gauge_tick = prometheus.gauge("factorio_tick", "game tick")
 gauge_connected_player_count = prometheus.gauge("factorio_connected_player_count", "connected players")
@@ -139,12 +144,16 @@ gauge_power_production_output =
 	prometheus.gauge("factorio_power_production_output", "power consumed", { "force", "name", "network", "surface" })
 
 script.on_init(function()
+	logging.reload_settings()
+
 	if game.active_mods["YARM"] then
 		global.yarm_on_site_update_event_id = remote.call("YARM", "get_on_site_updated_event_id")
 		script.on_event(global.yarm_on_site_update_event_id, handleYARM)
 	end
 
 	on_power_init()
+
+	on_signals_init()
 
 	script.on_nth_tick(nth_tick, register_events)
 
@@ -170,9 +179,34 @@ script.on_init(function()
 
 	-- research events
 	script.on_event(defines.events.on_research_finished, on_research_finished)
+
+	-- ui events
+	script.on_event(defines.events.on_gui_closed, function(event)
+		on_signals_gui_closed(event)
+		on_signals_debug_gui_closed(event)
+	end)
+	script.on_event(defines.events.on_gui_click, function (event)
+		on_signals_gui_click(event)
+	end)
+	script.on_event(defines.events.on_gui_selection_state_changed, function (event)
+		on_signals_gui_selection_state_changed(event)
+	end)
+	script.on_event(defines.events.on_gui_confirmed, function (event)
+		on_signals_gui_confirmed(event)
+	end)
+	script.on_event(defines.events.on_gui_text_changed, function (event)
+		on_signals_gui_text_changed(event)
+	end)
+	script.on_event(defines.events.on_gui_opened, function (event)
+		on_signals_gui_opened(event)
+	end)
+	script.on_event(defines.events.on_runtime_mod_setting_changed, function (event)
+		logging.reload_settings()
+	end)
 end)
 
 script.on_load(function()
+	logging.reload_settings()
 	if global.yarm_on_site_update_event_id then
 		if script.get_event_handler(global.yarm_on_site_update_event_id) then
 			script.on_event(global.yarm_on_site_update_event_id, handleYARM)
@@ -180,6 +214,8 @@ script.on_load(function()
 	end
 
 	on_power_load()
+
+	on_signals_load()
 
 	script.on_nth_tick(nth_tick, register_events)
 
@@ -205,11 +241,38 @@ script.on_load(function()
 
 	-- research events
 	script.on_event(defines.events.on_research_finished, on_research_finished)
+
+	-- ui events
+	script.on_event(defines.events.on_gui_closed, function(event)
+		on_signals_gui_closed(event)
+		on_signals_debug_gui_closed(event)
+	end)
+	script.on_event(defines.events.on_gui_click, function (event)
+		on_signals_gui_click(event)
+	end)
+	script.on_event(defines.events.on_gui_selection_state_changed, function (event)
+		on_signals_gui_selection_state_changed(event)
+	end)
+	script.on_event(defines.events.on_gui_confirmed, function (event)
+		on_signals_gui_confirmed(event)
+	end)
+	script.on_event(defines.events.on_gui_text_changed, function (event)
+		on_signals_gui_text_changed(event)
+	end)
+	script.on_event(defines.events.on_gui_opened, function (event)
+		on_signals_gui_opened(event)
+	end)
+	script.on_event(defines.events.on_runtime_mod_setting_changed, function (event)
+		logging.reload_settings()
+	end)
 end)
 
 script.on_configuration_changed(function(event)
+	logging.reload_settings()
 	if game.active_mods["YARM"] then
 		global.yarm_on_site_update_event_id = remote.call("YARM", "get_on_site_updated_event_id")
 		script.on_event(global.yarm_on_site_update_event_id, handleYARM)
 	end
 end)
+
+add_signals_debug_ui_command()

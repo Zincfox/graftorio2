@@ -28,7 +28,7 @@ end
 
 function Registry:unregister(collector)
 	if self.collectors[collector.name] ~= nil then
-		table.remove(self.collectors, collector.name)
+		self.collectors[collector.name] = nil
 	end
 end
 
@@ -69,6 +69,13 @@ end
 local function register(collector)
 	local registry = get_registry()
 	registry:register(collector)
+
+	return collector
+end
+
+local function unregister(collector)
+	local registry = get_registry()
+	registry:unregister(collector)
 
 	return collector
 end
@@ -379,5 +386,6 @@ return {
 	collect = collect,
 	collect_http = collect_http,
 	clear = clear,
+	unregister = unregister,
 	init = init,
 }

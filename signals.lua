@@ -403,6 +403,89 @@ function on_signals_tick(event)
     debug_log("Done", log_levels.trace, "signals")
 end
 
+function on_signals_setup_blueprint(event)
+    local player = game.players[event.player_index]
+    local blueprint = player.blueprint_to_setup
+    if blueprint == nil then
+        logging.debug_log("Initial blueprint nil", logging.levels.verbose, "signals")
+        blueprint = player.cursor_stack
+    elseif not blueprint.valid_for_read then
+        logging.debug_log("Initial blueprint not valid for read", logging.levels.verbose, "signals")
+        blueprint = player.cursor_stack
+    end
+    if blueprint == nil then
+        logging.debug_log("Second blueprint nil", logging.levels.verbose, "signals")
+        return
+    elseif not blueprint.valid_for_read then
+        logging.debug_log("Second blueprint not valid for read", logging.levels.verbose, "signals")
+        return
+    end
+    local entities = blueprint.get_blueprint_entities()
+    if not entities then
+        logging.debug_log("Entities in blueprint nil", logging.levels.verbose, "signals")
+        return
+    end
+    if not event.mapping.valid then
+        logging.debug_log("Entity mapping invalid", logging.levels.verbose, "signals")
+        return
+    end
+    local map = event.mapping.get()
+    for _, blueprint_entity in pairs(entities) do
+        if blueprint_entity.name == "prometheus-combinator" then
+            local local_id = blueprint_entity.entity_number
+            local source_entity = map[local_id]
+            if source_entity ~= nil then
+                local stored_global = get_signal_combinator_data(source_entity.unit_number)
+                if stored_global == nil then
+                    logging.debug_log("No data stored for "..source_entity.unit_number.." (mapped from "..local_id..")", logging.levels.verbose, "signals")
+                else
+                    logging.debug_log("Raw data", logging.levels.verbose, "signals")
+                    logging.debug_log(serpent.line(stored_global), logging.levels.verbose, "signals")
+                    local to_store = {
+                        ["metric-name"] = stored_global["metric-name"],
+                        ["signal-filter"] = nil,
+                        group = stored_global.group,
+                    }
+                    if stored_global["signal-filter"] ~= nil then
+                        to_store["signal-filter"] = {
+                            type = stored_global["signal-filter"].type,
+                            name = stored_global["signal-filter"].name,
+                        }
+                    end
+                    logging.debug_log("Saving data to blueprint_entity "..local_id.. " (from "..source_entity.unit_number.."): ", logging.levels.verbose, "signals")
+                    logging.debug_log(serpent.line(to_store), logging.levels.verbose, "signals")
+                    blueprint.set_blueprint_entity_tag(local_id, "graftorio2-metric-template", to_store)
+                end
+            else
+                logging.debug_log("No mapped entity for ".. local_id ..":"..blueprint_entity.name, logging.levels.verbose, "signals")
+            end
+        end
+    end
+end
+
+function on_signals_entity_build(event)
+    local entity = event.created_entity
+    if entity and entity.name == "prometheus-combinator" then
+        logging.debug_log("Built prometheus combinator", logging.levels.verbose, "signals")
+        local tags = event.tags
+        if not tags then
+            logging.debug_log("No tags present", logging.levels.verbose, "signals")
+            return
+        end
+        local metric_template = tags["graftorio2-metric-template"]
+        if metric_template == nil then
+            logging.debug_log("No metric template present", logging.levels.verbose, "signals")
+            return
+        end
+        local applied_template = flib_table.deep_copy(metric_template)
+        applied_template.entity = entity
+        logging.debug_log("Applying template:", logging.levels.verbose, "signals")
+        logging.debug_log(serpent.line(applied_template), logging.levels.verbose, "signals")
+        set_signal_combinator_data(entity.unit_number, applied_template)
+        logging.debug_log("Applied template to "..entity.unit_number, logging.levels.verbose, "signals")
+    end
+end
+
 return {
     signal_metrics = signal_metrics,
     clean_invalid_prometheus_combinators = clean_invalid_prometheus_combinators,

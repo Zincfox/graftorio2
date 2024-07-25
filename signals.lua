@@ -209,6 +209,35 @@ local function unload_group_if_empty(metric_name, group_name, cascade)
     end
 end
 
+local function remove_runtime_combinator_path(metric_name, group_name, unit_number)
+    debug_log("Remove runtime combinator from path: \"" .. metric_name .. "\"/\"" .. group_name .. "\"/" .. tostring(unit_number), log_levels.verbose, "signals")
+    if metric_name == nil then
+        debug_log("Remove failed due to nil metric_name", log_levels.verbose, "signals")
+        return
+    end
+    if group_name == nil then
+        debug_log("Remove failed due to nil group_name", log_levels.verbose, "signals")
+        return
+    end
+    if unit_number == nil then
+        debug_log("Remove failed due to nil unit_number", log_levels.verbose, "signals")
+        return
+    end
+    local signal_metric_data = signal_metrics[metric_name]
+    if signal_metric_data ~= nil then
+        local old_signal_group_data = signal_metric_data.groups
+        if old_signal_group_data[group_name] ~= nil then
+            debug_log("Group found", log_levels.verbose, "signals")
+            old_signal_group_data[group_name][unit_number] = nil
+            unload_group_if_empty(metric_name, group_name, 2)
+        else
+            debug_log("Group not found", log_levels.verbose, "signals")
+        end
+    else
+        debug_log("Metric not found in signal_metrics", log_levels.verbose, "signals")
+    end
+end
+
 local function set_signal_combinator_data(unit_number, data)
     local previous_global_data = global["signal-data"]["combinators"][unit_number]
     local copy
@@ -228,21 +257,9 @@ local function set_signal_combinator_data(unit_number, data)
             debug_log("No previous metric name", log_levels.verbose, "signals")
         else
             debug_log("Previous metric name: \"" .. previous_metric_name .. "\"", log_levels.verbose, "signals")
-            if (data == nil or previous_metric_name ~= data["metric-name"]) or (previous_group ~= next_group and previous_group ~= nil and previous_group ~= "") then
+            if (data == nil or previous_metric_name ~= data["metric-name"]) or (previous_group ~= next_group) then
                 debug_log("Previous path is different, remove from old group: \"" .. previous_metric_name .. "\"/\"" .. previous_group .. "\"", log_levels.verbose, "signals")
-                local old_signal_metric_data = signal_metrics[previous_metric_name]
-                if old_signal_metric_data ~= nil then
-                    local old_signal_group_data = old_signal_metric_data.groups
-                    if old_signal_group_data[previous_group] ~= nil then
-                        debug_log("Group found", log_levels.verbose, "signals")
-                        old_signal_group_data[previous_group][unit_number] = nil
-                        unload_group_if_empty(previous_metric_name, previous_group, 2)
-                    else
-                        debug_log("Group not found", log_levels.verbose, "signals")
-                    end
-                else
-                    debug_log("Metric not found in signal_metrics", log_levels.verbose, "signals")
-                end
+                remove_runtime_combinator_path(previous_metric_name, previous_group, unit_number)
             else
                 debug_log("Metric name same and group same / was nil", log_levels.verbose, "signals")
             end
@@ -273,7 +290,6 @@ local function remove_combinator(combinator_unit_number)
     debug_log("Removed " .. tostring(combinator_unit_number), log_levels.verbose, "signals")
 end
 
-
 local function clean_invalid_prometheus_combinators()
     local pending_removal_numbers = {}
     for combinator_unit_number, combinator_table in pairs(global["signal-data"].combinators) do
@@ -285,7 +301,6 @@ local function clean_invalid_prometheus_combinators()
         remove_combinator(pending_removal_number)
     end
 end
-
 
 function on_signals_load()
     --[[ global signal data example:
@@ -346,7 +361,8 @@ function on_signals_tick(event)
         return
     end
 
-    local pending_removals = {}
+    local invalid_unit_numbers = {}
+    local mismatching_combinator_paths = {} -- {{ ["metric-name"]="metric_name_1", ["group"] = "", ["unit-number"] = 9001 }}
 
     debug_log("Before tick, global:", log_levels.trace, "signals")
     debug_log(serpent.block(global["signal-data"]), log_levels.trace, "signals")
@@ -367,7 +383,13 @@ function on_signals_tick(event)
                     local signal_filter = combinator_table["signal-filter"]
                     if not combinator_entity.valid then
                         debug_log("Entity not valid", log_levels.trace, "signals")
-                        table.insert(pending_removals, combinator_unit_number)
+                        table.insert(invalid_unit_numbers, combinator_unit_number)
+                        table.insert(mismatching_combinator_paths, { ["metric-name"] = metric_name, ["group"] = group, ["unit-number"] = combinator_unit_number })
+                    elseif metric_name ~= combinator_table["metric-name"] or (group ~= combinator_table["group"] and (enable_signal_groups or group ~= "")) or combinator_unit_number ~= combinator_entity.unit_number then
+                        local actual_path = "\""..tostring(metric_name).."\"/\""..tostring(group).."\"/"..tostring(combinator_unit_number)
+                        local stored_path = "\""..tostring(combinator_table["metric-name"]).."\"/\""..tostring(combinator_table["group"]).."\"/"..tostring(combinator_entity.unit_number)
+                        debug_log("Mismatching paths: "..actual_path.." (cached) ~= "..stored_path.." (global)", log_levels.trace, "signals")
+                        table.insert(mismatching_combinator_paths, { ["metric-name"] = metric_name, ["group"] = group, ["unit-number"] = combinator_unit_number })
                     else
                         if signal_filter ~= nil then
                             debug_log("Single filter", log_levels.trace, "signals")
@@ -381,7 +403,7 @@ function on_signals_tick(event)
                                 for _, entry in ipairs(values) do
                                     local signal = entry.signal
                                     local value = entry.count
-                                    debug_log("Inc[\"" .. group .. "\"" .. signal.type .. ":" .. signal.name .. "] by " .. tostring(value), log_levels.trace, "signals")
+                                    debug_log("Inc[\"" .. group .. "\", " .. signal.type .. ":" .. signal.name .. "] by " .. tostring(value), log_levels.trace, "signals")
                                     prometheus_metric:inc(value, { group, signal.type .. ":" .. signal.name })
                                 end
                             end
@@ -391,9 +413,13 @@ function on_signals_tick(event)
             end
         end
     end
-    while #pending_removals > 0 do
-        local next_removal = table.remove(pending_removals, 1)
+    while #invalid_unit_numbers > 0 do
+        local next_removal = table.remove(invalid_unit_numbers, 1)
         remove_combinator(next_removal)
+    end
+    while #mismatching_combinator_paths > 0 do
+        local next_removal = table.remove(mismatching_combinator_paths, 1)
+        remove_runtime_combinator_path(next_removal["metric-name"], next_removal["group"], next_removal["unit-number"])
     end
     clean_invalid_prometheus_combinators()
     debug_log("After tick, global:", log_levels.trace, "signals")
@@ -437,7 +463,7 @@ function on_signals_setup_blueprint(event)
             if source_entity ~= nil then
                 local stored_global = get_signal_combinator_data(source_entity.unit_number)
                 if stored_global == nil then
-                    logging.debug_log("No data stored for "..source_entity.unit_number.." (mapped from "..local_id..")", logging.levels.verbose, "signals")
+                    logging.debug_log("No data stored for " .. source_entity.unit_number .. " (mapped from " .. local_id .. ")", logging.levels.verbose, "signals")
                 else
                     logging.debug_log("Raw data", logging.levels.verbose, "signals")
                     logging.debug_log(serpent.line(stored_global), logging.levels.verbose, "signals")
@@ -452,12 +478,12 @@ function on_signals_setup_blueprint(event)
                             name = stored_global["signal-filter"].name,
                         }
                     end
-                    logging.debug_log("Saving data to blueprint_entity "..local_id.. " (from "..source_entity.unit_number.."): ", logging.levels.verbose, "signals")
+                    logging.debug_log("Saving data to blueprint_entity " .. local_id .. " (from " .. source_entity.unit_number .. "): ", logging.levels.verbose, "signals")
                     logging.debug_log(serpent.line(to_store), logging.levels.verbose, "signals")
                     blueprint.set_blueprint_entity_tag(local_id, "graftorio2-metric-template", to_store)
                 end
             else
-                logging.debug_log("No mapped entity for ".. local_id ..":"..blueprint_entity.name, logging.levels.verbose, "signals")
+                logging.debug_log("No mapped entity for " .. local_id .. ":" .. blueprint_entity.name, logging.levels.verbose, "signals")
             end
         end
     end
@@ -482,7 +508,15 @@ function on_signals_entity_build(event)
         logging.debug_log("Applying template:", logging.levels.verbose, "signals")
         logging.debug_log(serpent.line(applied_template), logging.levels.verbose, "signals")
         set_signal_combinator_data(entity.unit_number, applied_template)
-        logging.debug_log("Applied template to "..entity.unit_number, logging.levels.verbose, "signals")
+        logging.debug_log("Applied template to " .. entity.unit_number, logging.levels.verbose, "signals")
+    end
+end
+
+function on_signals_entity_destroyed(event)
+    local entity = event.entity
+    if entity and entity.name == "prometheus-combinator" then
+        logging.debug_log("Destroyed prometheus combinator: "..tostring(entity.unit_number), logging.levels.verbose, "signals")
+        remove_combinator(entity.unit_number)
     end
 end
 

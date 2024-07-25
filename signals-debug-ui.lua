@@ -27,6 +27,9 @@ local function fill_active_metrics_container(container, loaded_metrics_table)
         metric_properties_group.add { type = "label", "properties-label", caption = { "graftorio2-signals-debug-gui.debug-metric-properties-caption" } }
         local metric_properties_text = metric_properties_group.add { type = "text-box", "properties-text", text = serpent.block(metric_table.properties) }
         metric_properties_text.read_only = true
+        if metric_properties_text.text == "{}" then
+            metric_properties_group.visible = false
+        end
 
         local metric_prometheus_present_group = metric_frame.add { type = "flow", name = "prometheus-present-group", direction = "horizontal" }
         metric_prometheus_present_group.add { type = "label", "prometheus-present-label", caption = { "graftorio2-signals-debug-gui.debug-metric-prometheus-present" } }
@@ -34,7 +37,7 @@ local function fill_active_metrics_container(container, loaded_metrics_table)
         if metric_table["prometheus-metric"] ~= nil then
             metric_prometheus_present_content.caption = { "?", { "graftorio2-signals-debug-gui.debug-metric-prometheus-present-true" }, { "gui.yes" }, "true" }
         else
-            metric_prometheus_present_content.caption = { "?", { "graftorio2-signals-debug-gui.debug-metric-prometheus-present-false" }, { "gui.no" }, "true" }
+            metric_prometheus_present_content.caption = { "?", { "graftorio2-signals-debug-gui.debug-metric-prometheus-present-false" }, { "gui.no" }, "false" }
         end
 
         local metric_groups_container = metric_frame.add { type = "flow", name = "groups", direction = "vertical", caption = { "graftorio2-signals-debug-gui.debug-groups-general-caption" } }
@@ -69,7 +72,7 @@ local function fill_active_metrics_container(container, loaded_metrics_table)
                     end
                 end
 
-                local entry_path = { "?", { "graftorio2-signals-debug-gui.debug-combinator-path-text", combinator_table["metric-name"], combinator_table.group, entity_number_label.caption }, tostring(combinator_table["metric-name"]) .. "/" .. tostring(combinator_table.group) .. "/" .. tostring(entity_number_label.caption) }
+                local entry_path = { "?", { "graftorio2-signals-debug-gui.debug-combinator-path-text", tostring(combinator_table["metric-name"]), combinator_table.group, entity_number_label.caption }, { "", tostring(combinator_table["metric-name"]), "/", tostring(combinator_table.group), "/", entity_number_label.caption } }
                 local entry_path_container = combinator_container.add { type = "flow", name = "entry-path-container", direction = "horizontal" }
                 entry_path_container.add { type = "label", name = "entry-path-label", caption = { "graftorio2-signals-debug-gui.debug-combinator-path-caption" } }
                 entry_path_container.add { type = "label", name = "entry-path-content", caption = entry_path }
@@ -94,6 +97,9 @@ local function fill_global_metrics_container(container, global_metrics_table)
         metric_properties_group.add { type = "label", "properties-label", caption = { "graftorio2-signals-debug-gui.debug-metric-properties-caption" } }
         local metric_properties_text = metric_properties_group.add { type = "text-box", "properties-text", text = serpent.block(metric_table) }
         metric_properties_text.read_only = true
+        if metric_properties_text.text == "{}" then
+            metric_properties_group.visible = false
+        end
     end
 end
 
@@ -125,7 +131,7 @@ local function fill_global_combinators_container(container, global_combinators_t
             end
         end
 
-        local entry_path = { "?", { "graftorio2-signals-debug-gui.debug-combinator-path-text", combinator_table["metric-name"], combinator_table.group, entity_number_label.caption }, tostring(combinator_table["metric-name"]) .. "/" .. tostring(combinator_table.group) .. "/" .. tostring(entity_number_label.caption) }
+        local entry_path = { "?", { "graftorio2-signals-debug-gui.debug-combinator-path-text", tostring(combinator_table["metric-name"]), combinator_table.group, entity_number_label.caption }, { "", tostring(combinator_table["metric-name"]), "/", tostring(combinator_table.group), "/", entity_number_label.caption } }
         local entry_path_container = combinator_container.add { type = "flow", name = "entry-path-container", direction = "horizontal" }
         entry_path_container.add { type = "label", name = "entry-path-label", caption = { "graftorio2-signals-debug-gui.debug-combinator-path-caption" } }
         entry_path_container.add { type = "label", name = "entry-path-content", caption = entry_path }
@@ -149,25 +155,22 @@ local function open_prometheus_combinator_debug_gui(player)
 
     local main = super_frame.add { type = "tabbed-pane" }
 
-    local active_metrics_tab = main.add { type = "tab", name = "active-metrics-tab", caption = {"graftorio2-signals-debug-gui.debug-tab-active-metrics"} }
+    local active_metrics_tab = main.add { type = "tab", name = "active-metrics-tab", caption = { "graftorio2-signals-debug-gui.debug-tab-active-metrics" } }
     local active_metrics_frame = main.add { type = "frame", name = "active-metrics-frame", direction = "vertical" }
     main.add_tab(active_metrics_tab, active_metrics_frame)
-    local active_metrics_content_list_frame = active_metrics_frame.add { type = "frame", name = "active-metrics-content-list-frame", direction = "vertical" }
-    local active_metrics_scroll = active_metrics_content_list_frame.add { type = "scroll-pane", name = "active-metrics-scroll", horizontal_scroll_policy = "auto", vertical_scroll_policy = "always" }
+    local active_metrics_scroll = active_metrics_frame.add { type = "scroll-pane", name = "active-metrics-scroll", horizontal_scroll_policy = "auto", vertical_scroll_policy = "always" }
     fill_active_metrics_container(active_metrics_scroll, signals.signal_metrics)
 
-    local global_metrics_tab = main.add { type = "tab", name = "global-metrics-tab", caption = {"graftorio2-signals-debug-gui.debug-tab-global-metrics"} }
+    local global_metrics_tab = main.add { type = "tab", name = "global-metrics-tab", caption = { "graftorio2-signals-debug-gui.debug-tab-global-metrics" } }
     local global_metrics_frame = main.add { type = "frame", name = "global-metrics-frame", direction = "vertical" }
     main.add_tab(global_metrics_tab, global_metrics_frame)
-    local global_metrics_content_list_frame = global_metrics_frame.add { type = "frame", name = "global-metrics-content-list-frame", direction = "vertical" }
-    local global_metrics_scroll = global_metrics_content_list_frame.add { type = "scroll-pane", name = "global-metrics-scroll", horizontal_scroll_policy = "auto", vertical_scroll_policy = "always" }
+    local global_metrics_scroll = global_metrics_frame.add { type = "scroll-pane", name = "global-metrics-scroll", horizontal_scroll_policy = "auto", vertical_scroll_policy = "always" }
     fill_global_metrics_container(global_metrics_scroll, global["signal-data"].metrics)
 
-    local global_combinators_tab = main.add { type = "tab", name = "global-combinators-tab", caption = {"graftorio2-signals-debug-gui.debug-tab-global-combinators"} }
+    local global_combinators_tab = main.add { type = "tab", name = "global-combinators-tab", caption = { "graftorio2-signals-debug-gui.debug-tab-global-combinators" } }
     local global_combinators_frame = main.add { type = "frame", name = "global-combinators-frame", direction = "vertical" }
     main.add_tab(global_combinators_tab, global_combinators_frame)
-    local global_combinators_content_list_frame = global_combinators_frame.add { type = "frame", name = "global-combinators-content-list-frame", direction = "vertical" }
-    local global_combinators_scroll = global_combinators_content_list_frame.add { type = "scroll-pane", name = "global-combinators-scroll", horizontal_scroll_policy = "auto", vertical_scroll_policy = "always" }
+    local global_combinators_scroll = global_combinators_frame.add { type = "scroll-pane", name = "global-combinators-scroll", horizontal_scroll_policy = "auto", vertical_scroll_policy = "always" }
     fill_global_combinators_container(global_combinators_scroll, global["signal-data"].combinators)
 
     super_frame.force_auto_center()

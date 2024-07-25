@@ -75,19 +75,19 @@ gauge_yarm_site_remaining_permille = prometheus.gauge(
 	{ "force", "name", "type" }
 )
 
-gauge_train_trip_time = prometheus.gauge("factorio_train_trip_time", "train trip time", { "from", "to", "train_id" })
-gauge_train_wait_time = prometheus.gauge("factorio_train_wait_time", "train wait time", { "from", "to", "train_id" })
+gauge_train_trip_time = prometheus.gauge("factorio_train_trip_time", "train trip time", { "step" })
+gauge_train_wait_time = prometheus.gauge("factorio_train_wait_time", "train wait time", { "step" })
 
 histogram_train_trip_time = prometheus.histogram(
 	"factorio_train_trip_time_groups",
 	"train trip time",
-	{ "from", "to", "train_id" },
+	{ "segment" },
 	bucket_settings
 )
 histogram_train_wait_time = prometheus.histogram(
 	"factorio_train_wait_time_groups",
 	"train wait time",
-	{ "from", "to", "train_id" },
+	{ "segment" },
 	bucket_settings
 )
 

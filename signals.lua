@@ -6,8 +6,22 @@ local logging = require("logging")
 local debug_log = logging.debug_log
 local log_levels = logging.levels
 
+local function init_global()
+    if global["signal-data"] == nil then
+        global["signal-data"] = {}
+    end
+    if global["signal-data"]["metrics"] == nil then
+        global["signal-data"]["metrics"] = {}
+    end
+    if global["signal-data"]["combinators"] == nil then
+        global["signal-data"]["combinators"] = {}
+    end
+end
+
+
 function on_signals_init()
-    -- global["signal-data"] is populated in migrations
+    init_global()
+    -- global["signal-data"] is also populated in migrations
 end
 
 local signal_metrics = {}
@@ -341,7 +355,8 @@ function on_signals_load()
     debug_log(serpent.block(signal_metrics), log_levels.verbose, "signals")
     debug_log("Beginning load", log_levels.verbose, "signals")
     if global["signal-data"] == nil then
-        error("Could not find signal-data in global")
+        debug_log("Could not find signal-data during load, skipping custom metric setup", log_levels.info, "signals")
+        return
     end
     for metric_name, metric_table in pairs(global["signal-data"].metrics) do
         load_metric(metric_name, metric_table)
